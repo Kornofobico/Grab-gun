@@ -1,0 +1,281 @@
+-- Grab Weapon GUI (LocalScript)
+-- Cria um painel minimizável/arrastável com 3 botões: AK47, Remington, MP5.
+-- Ao clicar, teleportará a instância do item até alguns studs à frente do jogador.
+-- Coloque este LocalScript em StarterPlayerScripts ou StarterGui.
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Distância em studs para teleportar o item à frente do jogador
+local TELEPORT_DISTANCE = 5
+
+-- Mapeamento de armas -> função que retorna a instância a ser teleportada.
+-- Ajuste essas funções se os caminhos no seu jogo forem diferentes.
+local WEAPON_LOOKUP = {
+    AK47 = function()
+        -- tentativa comum de caminho (modifique se necessário)
+        local ok, v = pcall(function() return Workspace.Prison_ITEMS.giver.AK47 end)
+        if ok and v then return v end
+        -- fallback: procurar por nome no workspace
+        return Workspace:FindFirstChild("AK47", true)
+    end,
+
+    Remington = function()
+        -- tentativa comum de caminho (modifique se necessário)
+        local ok, v = pcall(function() return Workspace.Prison_ITEMS.giver.Remington end)
+        if ok and v then return v end
+        return Workspace:FindFirstChild("Remington", true)
+    end,
+
+    MP5 = function()
+        -- caminho que você forneceu no exemplo:
+        local ok, v = pcall(function() return Workspace.Prison_ITEMS.giver.MP5["Meshes/MP5 (2)"] end)
+        if ok and v then return v end
+        -- fallback: procurar por MP5 no workspace
+        return Workspace:FindFirstChild("MP5", true) or Workspace:FindFirstChild("MP5 (2)", true)
+    end,
+}
+
+-- Util: encontra Character e HumanoidRootPart
+local function getPlayerRoot()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    return char, hrp
+end
+
+-- Desancora todas as parts de um model (se necessário)
+local function unanchorModel(model)
+    for _, v in ipairs(model:GetDescendants()) do
+        if v:IsA("BasePart") then
+            pcall(function() v.Anchored = false end)
+        end
+    end
+end
+
+-- Teleporta uma instância (Model ou BasePart) para frente do jogador
+local function teleportToFront(inst)
+    if not inst then return false, "Instância inválida" end
+    local char, hrp = getPlayerRoot()
+    if not hrp then return false, "HumanoidRootPart não encontrado" end
+
+    local targetPos = hrp.Position + (hrp.CFrame.LookVector * TELEPORT_DISTANCE)
+    local targetCFrame = CFrame.new(targetPos, targetPos + hrp.CFrame.LookVector)
+
+    if inst:IsA("Model") then
+        -- tenta definir PrimaryPart (se não tiver, usa a primeira BasePart)
+        local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+        if not primary then
+            return false, "Model sem BasePart"
+        end
+
+        -- desancora e move
+        unanchorModel(inst)
+        pcall(function()
+            inst.PrimaryPart = primary
+            inst:SetPrimaryPartCFrame(targetCFrame)
+        end)
+        return true, "Model teleportado"
+    elseif inst:IsA("BasePart") then
+        pcall(function()
+            inst.Anchored = false
+            inst.CFrame = targetCFrame
+        end)
+        return true, "Parte teleportada"
+    else
+        return false, "Instância não é movível (não é Model nem BasePart)"
+    end
+end
+
+-- Função que processa clique de botão de arma
+local function onWeaponButtonClicked(name)
+    local getter = WEAPON_LOOKUP[name]
+    if not getter then
+        return false, "Arma não registrada: " .. tostring(name)
+    end
+
+    local ok, inst = pcall(getter)
+    if not ok then
+        return false, "Erro ao obter instância da arma"
+    end
+    if not inst then
+        return false, "Arma não encontrada no workspace: " .. name
+    end
+
+    local succ, msg = teleportToFront(inst)
+    return succ, msg
+end
+
+-- ---------- GUI ----------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GrabWeaponGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = PlayerGui
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 260, 0, 140)
+mainFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
+
+-- Top bar (arrastar + minimizar)
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 32)
+topBar.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+topBar.BorderSizePixel = 0
+topBar.Parent = mainFrame
+Instance.new("UICorner", topBar).CornerRadius = UDim.new(0, 8)
+
+local title = Instance.new("TextLabel")
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 8, 0, 0)
+title.Size = UDim2.new(1, -96, 1, 0)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Text = "Grab Weapons"
+title.TextColor3 = Color3.fromRGB(230,230,230)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.Parent = topBar
+
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 28, 0, 24)
+minimizeBtn.Position = UDim2.new(1, -36, 0.5, -12)
+minimizeBtn.Text = "_"
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.TextSize = 16
+minimizeBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+minimizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+minimizeBtn.Parent = topBar
+Instance.new("UICorner", minimizeBtn).CornerRadius = UDim.new(0, 6)
+
+-- Content container
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -12, 1, -44)
+content.Position = UDim2.new(0, 6, 0, 36)
+content.BackgroundTransparency = 1
+content.Parent = mainFrame
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 20)
+statusLabel.Position = UDim2.new(0, 0, 0, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "" -- mensagens de status
+statusLabel.TextColor3 = Color3.fromRGB(200,200,200)
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.TextSize = 12
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = content
+
+-- Buttons container
+local btnContainer = Instance.new("Frame")
+btnContainer.Size = UDim2.new(1, 0, 0, 80)
+btnContainer.Position = UDim2.new(0, 0, 0, 26)
+btnContainer.BackgroundTransparency = 1
+btnContainer.Parent = content
+
+local function makeWeaponButton(parent, text, y)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 0, 28)
+    b.Position = UDim2.new(0, 0, 0, y)
+    b.BackgroundColor3 = Color3.fromRGB(55,55,55)
+    b.TextColor3 = Color3.fromRGB(255,255,255)
+    b.Text = text
+    b.Font = Enum.Font.Gotham
+    b.TextSize = 14
+    b.Parent = parent
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    return b
+end
+
+local akBtn = makeWeaponButton(btnContainer, "AK47", 0)
+local remBtn = makeWeaponButton(btnContainer, "Remington", 34)
+local mp5Btn = makeWeaponButton(btnContainer, "MP5", 68)
+
+-- Conecta cliques
+local function setStatus(text, color)
+    statusLabel.Text = text or ""
+    statusLabel.TextColor3 = color or Color3.fromRGB(200,200,200)
+    -- limpa depois de 3s
+    task.delay(3, function()
+        if statusLabel and statusLabel.Parent then
+            statusLabel.Text = ""
+        end
+    end)
+end
+
+akBtn.MouseButton1Click:Connect(function()
+    local ok, msg = onWeaponButtonClicked("AK47")
+    if ok then
+        setStatus("AK47 teleportada para frente.", Color3.fromRGB(0,200,0))
+    else
+        setStatus("AK47: " .. tostring(msg), Color3.fromRGB(200,100,0))
+    end
+end)
+
+remBtn.MouseButton1Click:Connect(function()
+    local ok, msg = onWeaponButtonClicked("Remington")
+    if ok then
+        setStatus("Remington teleportada para frente.", Color3.fromRGB(0,200,0))
+    else
+        setStatus("Remington: " .. tostring(msg), Color3.fromRGB(200,100,0))
+    end
+end)
+
+mp5Btn.MouseButton1Click:Connect(function()
+    local ok, msg = onWeaponButtonClicked("MP5")
+    if ok then
+        setStatus("MP5 teleportada para frente.", Color3.fromRGB(0,200,0))
+    else
+        setStatus("MP5: " .. tostring(msg), Color3.fromRGB(200,100,0))
+    end
+end)
+
+-- Minimize toggle
+local minimized = false
+minimizeBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        content.Visible = false
+        mainFrame.Size = UDim2.new(0, 200, 0, 36)
+        minimizeBtn.Text = "▢"
+    else
+        content.Visible = true
+        mainFrame.Size = UDim2.new(0, 260, 0, 140)
+        minimizeBtn.Text = "_"
+    end
+end)
+
+-- Dragging logic (arrastar pela topBar)
+do
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+
+    topBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    topBar.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- Final: mostra instrução rápida
+setStatus("Clique em uma arma para trazê-la à sua frente.", Color3.fromRGB(180,180,180))
+
+-- Fim do script
