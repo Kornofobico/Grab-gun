@@ -1,0 +1,2 @@
+#loadstring here 
+     ⬇️⬇️⬇️
